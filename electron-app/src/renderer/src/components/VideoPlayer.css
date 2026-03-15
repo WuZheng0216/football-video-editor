@@ -1,0 +1,243 @@
+.video-player-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.video-player-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #0f172a 0%, #16213e 100%);
+  border-radius: 14px;
+}
+
+.empty-state {
+  text-align: center;
+  color: #f4f8ff;
+}
+
+.empty-state h3 {
+  margin: 0 0 8px;
+  font-size: 24px;
+}
+
+.empty-state p {
+  margin: 0;
+  color: #9db2d8;
+}
+
+.video-wrapper {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: #000;
+}
+
+.video-element {
+  width: 100%;
+  height: 100%;
+  background: #000;
+  object-position: center center;
+}
+
+.video-element.view-fit {
+  object-fit: contain;
+}
+
+.video-element.view-original {
+  object-fit: none;
+}
+
+.selection-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 8;
+}
+
+.selection-canvas.interactive {
+  cursor: crosshair;
+}
+
+.selection-canvas.passive {
+  cursor: default;
+}
+
+.interaction-hint-pill {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  z-index: 18;
+  max-width: min(70%, 720px);
+  padding: 8px 12px;
+  border: 1px solid rgba(129, 163, 220, 0.5);
+  border-radius: 999px;
+  background: rgba(8, 16, 32, 0.78);
+  color: #dbe8ff;
+  font-size: 12px;
+  line-height: 1.4;
+  backdrop-filter: blur(10px);
+}
+
+.processing-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 24;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.68);
+  color: #fff;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid rgba(255, 255, 255, 0.22);
+  border-top-color: #3aa6ff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.video-controls {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-top: 1px solid rgba(72, 102, 152, 0.7);
+  background: linear-gradient(180deg, rgba(7, 15, 28, 0.98) 0%, rgba(8, 13, 25, 0.98) 100%);
+}
+
+.controls-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.controls-timeline {
+  flex: 1;
+  min-width: 0;
+}
+
+.control-btn {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f4f8ff;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.control-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(111, 170, 255, 0.6);
+}
+
+.control-btn.text-btn {
+  padding: 7px 11px;
+  font-size: 12px;
+}
+
+.time-display {
+  min-width: 60px;
+  text-align: center;
+  color: #d9e6ff;
+  font-size: 12px;
+}
+
+.timeline-slider,
+.volume-slider {
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  outline: none;
+}
+
+.timeline-slider {
+  flex: 1;
+}
+
+.timeline-slider::-webkit-slider-thumb,
+.volume-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: #2ea2ff;
+  cursor: pointer;
+}
+
+.volume-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.volume-slider {
+  width: 96px;
+}
+
+.control-icon {
+  color: #dbe8ff;
+  font-size: 12px;
+}
+
+.playback-rate-select {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+.playback-rate-select option {
+  color: #fff;
+  background: #111827;
+}
+
+@media (max-width: 1280px) {
+  .interaction-hint-pill {
+    max-width: calc(100% - 32px);
+    border-radius: 12px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .video-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .controls-section {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .controls-timeline {
+    width: 100%;
+  }
+}

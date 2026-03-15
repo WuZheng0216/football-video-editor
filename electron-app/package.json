@@ -1,0 +1,106 @@
+{
+  "name": "football-video-editor",
+  "version": "0.1.0",
+  "description": "AI-powered football video editing and analysis software",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "concurrently \"npm run watch:renderer\" \"wait-on http://localhost:3000 && electron .\"",
+    "watch:main": "nodemon --watch main.js --exec \"echo main.js changed\"",
+    "watch:renderer": "cd src/renderer && npm start",
+    "build:main": "echo \"No TypeScript main build step\"",
+    "build:renderer": "cd src/renderer && npm run build",
+    "build": "npm run build:main && npm run build:renderer",
+    "package": "electron-builder",
+    "test": "jest"
+  },
+  "keywords": [
+    "football",
+    "video",
+    "editor",
+    "ai",
+    "analysis",
+    "sports"
+  ],
+  "author": "Football Editor Team",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.0.0",
+    "electron": "28.3.3",
+    "electron-builder": "^24.0.0",
+    "nodemon": "^3.0.0",
+    "typescript": "^5.0.0",
+    "wait-on": "^7.0.0"
+  },
+  "dependencies": {
+    "@types/node": "^20.0.0",
+    "electron-store": "^8.0.0",
+    "ffmpeg-static": "^5.0.0",
+    "fluent-ffmpeg": "^2.1.0",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
+  },
+  "build": {
+    "appId": "com.football.editor",
+    "productName": "Football Video Editor",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "dist/**/*",
+      "node_modules/**/*",
+      "main.js",
+      "!**/node_modules/*/{test,__tests__,tests,*.md,Makefile}",
+      "!**/node_modules/.bin"
+    ],
+    "mac": {
+      "category": "public.app-category.video",
+      "target": "dmg"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "publisherName": "Football Editor Team"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Video"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Football Video Editor"
+    },
+    "extraResources": [
+      {
+        "from": "../ai-engine",
+        "to": "ai-engine",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../video-core",
+        "to": "video-core",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ]
+  }
+}

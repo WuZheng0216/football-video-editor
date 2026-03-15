@@ -1,0 +1,80 @@
+:root {
+  --bg-main: #08111f;
+  --bg-panel: #0f1b33;
+  --bg-panel-2: #142545;
+  --bg-soft: #10203b;
+  --bg-hover: #1a3159;
+  --text-main: #eef4ff;
+  --text-sub: #98add2;
+  --line: #29456e;
+  --brand: #33a3ff;
+  --brand-2: #1f64ff;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { width: 100%; height: 100%; }
+body { margin: 0; background: radial-gradient(circle at 18% 0%, rgba(31, 72, 142, 0.38) 0%, rgba(31, 72, 142, 0) 26%), linear-gradient(180deg, #09111f 0%, #0a1424 100%); color: var(--text-main); font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif; overflow: hidden; }
+button, input, select, textarea { font: inherit; }
+
+.app { display: flex; flex-direction: column; width: 100%; height: 100%; }
+.app-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 16px; border-bottom: 1px solid rgba(70, 109, 168, 0.55); background: linear-gradient(90deg, rgba(8, 18, 34, 0.98) 0%, rgba(16, 32, 60, 0.98) 100%); }
+.header-left, .header-right { display: flex; align-items: center; gap: 10px; }
+.app-title { margin: 0; font-size: 30px; font-weight: 800; }
+.project-name { padding: 4px 12px; border: 1px solid rgba(73, 112, 170, 0.75); border-radius: 999px; background: rgba(18, 37, 69, 0.55); color: var(--text-sub); font-size: 13px; }
+
+.btn { border: 1px solid transparent; border-radius: 10px; padding: 8px 14px; color: #fff; cursor: pointer; font-size: 14px; transition: transform 0.14s ease, opacity 0.14s ease, background 0.18s ease, border-color 0.18s ease; }
+.btn:hover:not(:disabled) { transform: translateY(-1px); }
+.btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn-primary { background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%); }
+.btn-secondary { border-color: rgba(74, 107, 160, 0.88); background: rgba(22, 38, 68, 0.92); }
+.btn-large { padding: 14px 22px; font-size: 16px; }
+
+.app-content { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 10px; }
+.welcome-screen { flex: 1; display: flex; align-items: center; justify-content: center; }
+.welcome-content { max-width: 720px; padding: 42px; border: 1px solid rgba(55, 93, 147, 0.7); border-radius: 24px; background: linear-gradient(180deg, rgba(14, 25, 48, 0.92) 0%, rgba(10, 18, 36, 0.94) 100%); text-align: center; }
+.welcome-content h2 { margin: 0 0 12px; font-size: 34px; }
+.welcome-content p { margin: 0 0 24px; color: var(--text-sub); }
+
+.editor-layout { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 12px; }
+.editor-layout.focus-monitor { grid-template-columns: 1fr; }
+.editor-main { min-width: 0; min-height: 0; display: grid; grid-template-rows: minmax(460px, 1fr) auto minmax(300px, 34vh); gap: 12px; }
+.monitor-shell, .edit-strip, .timeline-stage, .workspace-sidebar, .app-footer { border: 1px solid var(--line); border-radius: 18px; background: linear-gradient(180deg, rgba(13, 23, 42, 0.94) 0%, rgba(10, 18, 34, 0.96) 100%); }
+.monitor-shell { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.monitor-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px 12px; border-bottom: 1px solid rgba(56, 89, 136, 0.72); }
+.monitor-toolbar-left, .monitor-toolbar-right { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.monitor-toolbar-left strong { font-size: 16px; }
+.monitor-toolbar-left span { color: var(--text-sub); font-size: 13px; }
+.monitor-stage { flex: 1; min-height: 420px; padding: 14px; }
+.chip-btn, .sidebar-tab, .sidebar-collapse-btn { border: 1px solid rgba(62, 95, 148, 0.88); border-radius: 10px; background: rgba(18, 36, 65, 0.92); color: #dbe8ff; cursor: pointer; padding: 8px 12px; }
+.chip-btn.active, .sidebar-tab.active { border-color: rgba(75, 176, 255, 0.95); background: linear-gradient(135deg, rgba(26, 84, 165, 0.95) 0%, rgba(45, 135, 255, 0.95) 100%); }
+
+.edit-strip { padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.edit-strip-left, .edit-strip-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.edit-status { color: var(--text-sub); font-size: 13px; }
+.timeline-stage { min-height: 0; padding: 10px; }
+
+.workspace-sidebar { min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.workspace-sidebar.collapsed { width: 72px; }
+.sidebar-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 8px; padding: 12px; border-bottom: 1px solid rgba(56, 89, 136, 0.72); }
+.sidebar-body { flex: 1; min-height: 0; overflow: auto; padding: 12px; }
+.inspector-panel, .inspector-section, .inspector-empty { display: flex; flex-direction: column; gap: 12px; }
+.inspector-empty { padding: 16px; border: 1px dashed rgba(60, 96, 148, 0.8); border-radius: 14px; background: rgba(14, 26, 48, 0.65); }
+.inspector-empty p { margin: 0; color: var(--text-sub); font-size: 13px; }
+.inspector-section { padding: 14px; border: 1px solid rgba(51, 79, 124, 0.84); border-radius: 14px; background: rgba(14, 26, 47, 0.72); }
+.inspector-section h3 { margin: 0; }
+.inspector-section label { display: flex; flex-direction: column; gap: 6px; color: var(--text-sub); font-size: 13px; }
+.inspector-section input { border: 1px solid rgba(63, 98, 150, 0.88); border-radius: 10px; background: rgba(11, 21, 40, 0.94); color: #eef4ff; padding: 9px 10px; }
+.checkbox-row { flex-direction: row !important; align-items: center; gap: 8px; }
+.checkbox-row input { width: auto; margin: 0; }
+.summary-card { display: flex; flex-direction: column; gap: 6px; padding: 12px; border: 1px solid rgba(61, 92, 143, 0.84); border-radius: 12px; background: rgba(16, 28, 52, 0.78); }
+.summary-card.compact { color: var(--text-sub); font-size: 13px; }
+.summary-title { color: var(--text-main); font-weight: 700; }
+
+.app-footer { margin: 0 10px 10px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.status-info { display: flex; gap: 8px; flex-wrap: wrap; }
+.status-item, .status-indicator { padding: 6px 10px; border: 1px solid rgba(58, 89, 138, 0.72); border-radius: 999px; background: rgba(16, 29, 53, 0.76); color: var(--text-sub); font-size: 12px; }
+
+@media (max-width: 1200px) {
+  .editor-layout { grid-template-columns: 1fr; }
+  .workspace-sidebar { width: 100%; }
+}
