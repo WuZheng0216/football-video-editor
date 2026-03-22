@@ -3,10 +3,12 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  min-width: 0;
   color: #d9e7ff;
   background: #0d1528;
   border-radius: 10px;
   border: 1px solid #2c4269;
+  overflow: hidden;
 }
 
 .timeline-toolbar {
@@ -14,6 +16,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   padding: 8px 10px;
   border-bottom: 1px solid #2d4470;
   background: #121f3b;
@@ -25,6 +28,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .timeline-toolbar button {
@@ -39,18 +44,21 @@
 .timeline-viewport {
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  max-width: 100%;
   overflow: auto;
 }
 
 .timeline-content {
   position: relative;
+  min-width: 100%;
   padding-bottom: 20px;
 }
 
 .timeline-ruler {
   position: sticky;
   top: 0;
-  z-index: 12;
+  z-index: 20;
   height: 32px;
   border-bottom: 1px solid #2b436b;
   background: rgba(10, 16, 31, 0.94);
@@ -80,7 +88,7 @@
 .timeline-marker {
   position: absolute;
   top: 2px;
-  z-index: 14;
+  z-index: 22;
   width: 10px;
   height: 28px;
   margin-left: -5px;
@@ -117,26 +125,48 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   padding: 6px 10px;
   border-bottom: 1px solid #2a446f;
   font-size: 12px;
 }
 
+.timeline-track-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .timeline-track-lane {
   position: relative;
-  min-height: 56px;
+}
+
+.timeline-lane-guide {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  border: 1px dashed rgba(92, 121, 168, 0.2);
+  border-radius: 10px;
+  background: rgba(10, 18, 33, 0.18);
+}
+
+.timeline-lane-label {
+  position: absolute;
+  left: 8px;
+  top: 6px;
+  font-size: 10px;
+  color: rgba(182, 203, 239, 0.55);
 }
 
 .timeline-item {
   position: absolute;
-  top: 8px;
-  height: 42px;
-  border-radius: 6px;
+  border-radius: 8px;
   border: 1px solid transparent;
   display: flex;
   align-items: center;
   overflow: hidden;
   user-select: none;
+  z-index: 4;
 }
 
 .timeline-item.clip {
@@ -161,6 +191,10 @@
 
 .timeline-item.selected {
   box-shadow: 0 0 0 2px rgba(147, 191, 255, 0.9);
+}
+
+.timeline-item.dragging {
+  opacity: 0.92;
 }
 
 .timeline-item-label {
@@ -215,7 +249,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  z-index: 16;
+  z-index: 24;
   pointer-events: none;
 }
 

@@ -1,7 +1,7 @@
-﻿export type ClipSource = 'ai' | 'manual';
+export type ClipSource = 'ai' | 'manual';
 export type ModelPreference = 'best' | 'balanced' | 'fast' | 'custom';
-export type SidebarTab = 'inspector' | 'ai' | 'export';
-export type AiPresetId = 'detect-players' | 'track-players' | 'magnifier-effect' | 'player-pov' | 'auto-highlight';
+export type SidebarTab = 'inspector' | 'library' | 'ai' | 'export';
+export type AiPresetId = 'detect-players' | 'track-players' | 'magnifier-effect' | 'player-pov' | 'player-highlight' | 'auto-highlight';
 export type AiRunScope = 'selection' | 'track' | 'full';
 
 export interface TimelineClip {
@@ -26,7 +26,7 @@ export interface TimelineMarker {
 }
 
 export type EffectTool = 'magnifier-effect' | 'player-pov';
-export type EffectOperation = EffectTool | 'detect-players' | 'track-players';
+export type EffectOperation = EffectTool | 'detect-players' | 'track-players' | 'player-highlight';
 export type EffectControlMode = 'auto' | 'manual' | 'hybrid';
 export type EffectSource = 'ai' | 'manual';
 export type EffectInteractionMode = 'cursor-follow' | 'pinned' | 'auto-target';
@@ -49,6 +49,9 @@ export interface EffectParams {
   fovAperture: number;
   fovLength: number;
   fovDim: number;
+  highlightOutlineWidth: number;
+  highlightGlowStrength: number;
+  highlightFillOpacity: number;
 }
 
 export interface TargetBinding {
@@ -58,6 +61,9 @@ export interface TargetBinding {
   confidence?: number;
   sampleTime?: number;
   bbox?: number[] | null;
+  teamCluster?: number | null;
+  teamLabel?: string | null;
+  displayColor?: string | null;
 }
 
 export interface EffectKeyframe {
@@ -75,6 +81,8 @@ export interface EffectControlState {
   manual: ManualEffectState;
   params: EffectParams;
   targetBinding: TargetBinding | null;
+  targetBindings: TargetBinding[];
+  highlightShowLabel: boolean;
 }
 
 export interface AiRuntimeConfig {
@@ -134,6 +142,13 @@ export interface AiTarget {
   latestBBox?: number[] | null;
   sampleTime?: number;
   source: 'detect' | 'track';
+  teamCluster?: number | null;
+  teamLabel?: string | null;
+  displayColor?: string | null;
+  jerseyColor?: number[] | null;
+  trackSpan?: number;
+  visibleRatio?: number;
+  avgConfidence?: number;
 }
 
 export interface HighlightClip {
@@ -155,6 +170,7 @@ export interface TimelineItemBase {
   label: string;
   start: number;
   end: number;
+  lane: number;
   enabled: boolean;
   locked?: boolean;
 }
@@ -164,7 +180,7 @@ export interface ClipItem extends TimelineItemBase {
   sourcePath: string;
   sourceStart: number;
   sourceEnd: number;
-  sourceType: 'original' | 'artifact' | 'manual';
+  sourceType: 'original' | 'artifact' | 'manual' | 'highlight-ai' | 'reference';
   score?: number;
 }
 
@@ -187,9 +203,14 @@ export interface EffectItem extends TimelineItemBase {
     rangeEnd?: number;
     summary?: AiRunSummary;
     targetBinding?: TargetBinding | null;
+    targetBindings?: TargetBinding[];
     keyframes?: EffectKeyframe[];
     interactionMode?: EffectInteractionMode;
     targets?: AiTarget[];
+    trackSamples?: any[];
+    showLabel?: boolean;
+    previewResult?: any;
+    analysisUpdatedAt?: string;
     [key: string]: any;
   };
 }
@@ -216,6 +237,78 @@ export interface TimelineSnapshot {
   duration: number;
   fps: number;
   tracks: Track[];
+}
+
+export interface AnalysisCacheEntry {
+  operation: AiPresetId;
+  result: any;
+  summary?: AiRunSummary | null;
+  updatedAt: string;
+}
+
+export type AnalysisCache = Partial<Record<AiPresetId, AnalysisCacheEntry>>;
+
+export interface MediaLibraryItem {
+  id: string;
+  kind: 'source-video' | 'ai-artifact' | 'export' | 'reference';
+  label: string;
+  path: string;
+  createdAt: string;
+  sourceVideoPath?: string;
+  operation?: AiPresetId;
+  artifactKey?: string;
+  duration?: number;
+  fps?: number;
+  width?: number;
+  height?: number;
+  size?: number;
+  metadata?: Record<string, any>;
+}
+
+export interface PreviewEffectLayer {
+  id: string;
+  label: string;
+  operation: EffectOperation;
+  lane: number;
+  result: any;
+  controlMode?: EffectControlMode;
+  interactionMode?: EffectInteractionMode;
+  manual?: ManualEffectState;
+  params?: Partial<EffectParams>;
+  targetBinding?: TargetBinding | null;
+  targetBindings?: TargetBinding[];
+  keyframes?: EffectKeyframe[];
+  showLabel?: boolean;
+  editable?: boolean;
+  draft?: boolean;
+}
+
+export interface EditorProjectUiState {
+  sidebarTab: SidebarTab;
+  sidebarCollapsed: boolean;
+  selectedAiPreset: AiPresetId;
+  aiRunScope: AiRunScope;
+  effectControl: EffectControlState;
+  aiRuntimeConfig: AiRuntimeConfig;
+  highlightDuration: number;
+  maxHighlights: number;
+  focusMonitor: boolean;
+  monitorView: 'fit' | 'original';
+}
+
+export interface EditorProject {
+  version: number;
+  name: string;
+  sourceVideoPath: string;
+  projectPath?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  videoInfo?: any;
+  timelineSnapshot: TimelineSnapshot | null;
+  mediaLibrary: MediaLibraryItem[];
+  analysisCache: AnalysisCache;
+  uiState: EditorProjectUiState;
+  warnings?: string[];
 }
 
 export interface PlayheadState {

@@ -43,14 +43,18 @@ class PlayerDetector:
         """
         self.device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
         print(f"Using device: {self.device}")
+        self.requested_model_path = model_path
+        self.resolved_model_path = None
         
         # 加载模型
         if model_path and Path(model_path).exists():
             print(f"Loading custom model from: {model_path}")
             self.model = YOLO(model_path)
+            self.resolved_model_path = str(Path(model_path).resolve())
         else:
             print("Loading YOLOv8n pretrained model...")
             self.model = YOLO('yolov8n.pt')
+            self.resolved_model_path = 'yolov8n.pt'
             # 可以在这里微调模型以适应足球场景
         
         # 移动到指定设备

@@ -27,9 +27,13 @@
 .result-details summary { cursor: pointer; color: #9ecbff; }
 .result-details pre { max-height: 220px; overflow: auto; margin: 8px 0 0; padding: 8px; border-radius: 8px; background: #091427; border: 1px solid #2f4b77; color: #dbe7ff; font-size: 12px; }
 .target-card.previewing { box-shadow: 0 0 0 1px rgba(95, 183, 255, 0.8); }
+.target-card.selected { box-shadow: 0 0 0 1px rgba(255, 222, 89, 0.95); border-color: #d8b23c; }
 .target-card-head, .target-meta, .highlight-card { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .highlight-card { align-items: center; }
 .highlight-card div { display: grid; gap: 4px; }
+.target-title { display: flex; align-items: center; gap: 8px; }
+.team-dot { width: 10px; height: 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.5); }
+.highlight-card button:disabled { opacity: 0.55; cursor: not-allowed; }
 
 @media (max-width: 900px) {
   .ai-panel-header { flex-direction: column; }

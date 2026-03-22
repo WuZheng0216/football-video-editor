@@ -1,86 +1,88 @@
-# 足球视频剪辑器
+# Football Video Editor
 
-一个本地运行的桌面版足球视频剪辑与分析原型项目，当前技术路线为：
-- Electron + React 前端桌面界面
-- Python CLI AI 后端
-- FFmpeg / ffprobe 本地视频处理与导出
+足球视频剪辑与 AI 分析工具，主工程位于 `football-video-editor`。
 
-## 当前版本能做什么
-### 已可用
-- 导入本地足球比赛视频
-- 播放 / 暂停 / 逐帧 / 倍速查看
-- 多轨时间线基础编辑：拖拽、裁剪、删除、分割
-- 主视频轨整片常驻
-- 调用 5 个本地 AI 操作：
-  - 球员检测
-  - 多目标跟踪
-  - 放大镜
-  - 球员视角
-  - 自动高光
-- 按当前时间线导出视频
+当前项目形态：
+- `electron-app`：桌面端主应用，Electron + React
+- `ai-engine`：Python AI 引擎，负责检测、跟踪、多人高亮、自动高光等
+- `video-core`：视频处理相关辅助模块
+- `docs`：部署、开发、使用说明
 
-### 部分可用
-- 检测与跟踪结果预览
-- 放大镜和球员视角交互预览
-- 自动高光候选片段生成
+## 推荐阅读顺序
 
-### 尚未完全接入主流程
-- 目标绑定列表完整闭环
-- 放大镜 / POV 关键帧持久化
-- 自动高光真正落轨
-- 项目保存 / 加载正式入口
-- 高级素材管理、字幕贴纸、复杂覆盖编辑
+如果你是第一次接触这个项目，建议按下面顺序看：
 
-## 当前项目结构
-```text
-football-video-editor/
-├─ electron-app/   # Electron 主进程与 React 渲染层
-├─ ai-engine/      # Python AI 分析与效果渲染 CLI
-├─ video-core/     # 预留的视频处理核心目录
-├─ docs/           # 使用说明与项目文档
-├─ README.md
-└─ INSTALL.md
-```
+1. [完整使用说明](./docs/使用说明-开发部署.md)
+2. [安装说明](./INSTALL.md)
+
+## 最低可运行环境
+
+- Windows 10/11 64 位
+- Node.js 20 LTS
+- Python 3.10 到 3.12
+- Conda 或 Miniconda
+- FFmpeg 和 FFprobe，并且已经加入系统 `PATH`
 
 ## 快速启动
+
+第一次安装依赖：
+
+```powershell
+cd C:\Wuz\TAC\football-video-editor\electron-app
+npm install
+
+cd C:\Wuz\TAC\football-video-editor\electron-app\src\renderer
+npm install
+
+cd C:\Wuz\TAC\football-video-editor\ai-engine
+pip install -r requirements.txt
+```
+
+开发模式启动：
+
 ```powershell
 conda activate tac
 cd C:\Wuz\TAC\football-video-editor\electron-app
 npm run dev
 ```
 
-如果没有自动弹出桌面窗口：
+如果 React 页面已经起来了，但 Electron 窗口没有自动弹出：
+
 ```powershell
+cd C:\Wuz\TAC\football-video-editor\electron-app
 npx electron .
 ```
 
-说明：
-- 必须在 Electron 桌面窗口中使用。
-- 浏览器中的开发页面不代表完整可用功能。
+## 当前已接通的主功能
 
-## 推荐使用流程
-1. 导入本地视频
-2. 播放并在时间线上定位片段
-3. 做基础裁剪或分割
-4. 打开右侧 AI 工具运行检测、跟踪或效果预览
-5. 在右侧导出面板导出当前时间线结果
+- 单主视频工程编辑
+- 项目保存、加载、最近项目
+- 主视频轨、AI 特效轨、素材/高光轨
+- 子轨分层、拖动、分割、删除、撤销、重做
+- 球员检测
+- 片段级球员跟踪
+- 多选球员持续高亮
+- 自动高光候选片段
+- 时间线导出
+- 素材库管理 AI 产物、导出结果和参考素材
 
-## 文档
-- [安装说明](./INSTALL.md)
-- [中文使用说明](./docs/使用说明-足球视频剪辑器.md)
+## 常见问题
 
-## 当前不再宣称支持的能力
-以下内容在当前仓库实现中没有完整落地，因此不作为当前版本能力宣传：
-- 语义分割
-- 姿态估计
-- 自动事件检测
-- REST API 服务
-- 插件系统
-- 云端同步
-- 完整商用级项目管理系统
+### 视频时长显示异常
 
-## 说明
-这个仓库当前更适合：
-- 本地演示桌面原型
-- 验证足球视频 AI 分析与效果交互
-- 继续往成熟剪辑软件方向迭代
+优先检查：
+
+```powershell
+ffmpeg -version
+ffprobe -version
+```
+
+只要这两个命令任何一个找不到，视频元数据、导出、部分 AI 流程都可能异常。
+
+### 启动时报 `node:path`
+
+通常是 Node 版本过低。请升级到 Node.js 20 LTS。
+
+### 打开的是网页，不是桌面应用
+
+请确认你最终是在 Electron 窗口里操作，而不是只在浏览器里打开 `localhost:3000`。

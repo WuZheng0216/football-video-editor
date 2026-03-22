@@ -4,5 +4,5 @@ import App from './App';
 
 test('renders app title', () => {
   render(<App />);
-  expect(screen.getByText('足球视频剪辑器')).toBeInTheDocument();
+  expect(screen.getByText('Football Video Editor')).toBeInTheDocument();
 });

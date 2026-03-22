@@ -37,7 +37,7 @@ const ExportPanel: React.FC<ExportPanelProps> = ({ videoPath, videoInfo, timelin
     resolution: '1080p',
     fps: 30,
     includeAudio: true,
-    fileName: 'football_timeline_export',
+    fileName: '足球时间线导出',
     outputPath: '',
   });
 

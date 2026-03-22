@@ -2,6 +2,7 @@
   position: relative;
   width: 100%;
   height: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   background: #000;
@@ -38,14 +39,18 @@
   position: relative;
   flex: 1;
   min-height: 0;
+  min-width: 0;
   background: #000;
+  overflow: hidden;
 }
 
 .video-element {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 0;
+  display: block;
+  margin: auto;
   background: #000;
-  object-position: center center;
+  z-index: 1;
 }
 
 .video-element.view-fit {
@@ -66,10 +71,12 @@
 
 .selection-canvas.interactive {
   cursor: crosshair;
+  pointer-events: auto;
 }
 
 .selection-canvas.passive {
   cursor: default;
+  pointer-events: none;
 }
 
 .interaction-hint-pill {
@@ -153,6 +160,11 @@
 .control-btn:hover {
   background: rgba(255, 255, 255, 0.14);
   border-color: rgba(111, 170, 255, 0.6);
+}
+
+.control-btn.is-active {
+  background: linear-gradient(135deg, rgba(26, 84, 165, 0.95) 0%, rgba(45, 135, 255, 0.95) 100%);
+  border-color: rgba(111, 170, 255, 0.88);
 }
 
 .control-btn.text-btn {
