@@ -95,6 +95,22 @@
   backdrop-filter: blur(10px);
 }
 
+.editor-state-pill {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  z-index: 18;
+  max-width: min(72%, 760px);
+  padding: 8px 12px;
+  border: 1px solid rgba(245, 201, 90, 0.55);
+  border-radius: 12px;
+  background: rgba(18, 24, 39, 0.78);
+  color: #fff3c4;
+  font-size: 12px;
+  line-height: 1.4;
+  backdrop-filter: blur(10px);
+}
+
 .processing-overlay {
   position: absolute;
   inset: 0;

@@ -270,6 +270,7 @@ export interface PreviewEffectLayer {
   label: string;
   operation: EffectOperation;
   lane: number;
+  source?: 'timeline' | 'draft';
   result: any;
   controlMode?: EffectControlMode;
   interactionMode?: EffectInteractionMode;

@@ -2,14 +2,36 @@
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const Store = require('electron-store');
 const ffmpeg = require('fluent-ffmpeg');
 
 let ffmpegPath = null;
 let ffprobePath = null;
-try { ffmpegPath = require('ffmpeg-static'); if (ffmpegPath) ffmpeg.setFfmpegPath(ffmpegPath); } catch (_e) {}
+
+function existingBinary(candidatePath) {
+  return candidatePath && typeof candidatePath === 'string' && fs.existsSync(candidatePath) ? candidatePath : null;
+}
+
+function resolveBinaryFromSystem(binaryName) {
+  const command = process.platform === 'win32' ? 'where.exe' : 'which';
+  const result = spawnSync(command, [binaryName], { windowsHide: true, env: process.env, encoding: 'utf8' });
+  if (result.status !== 0) return null;
+  return String(result.stdout || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line && fs.existsSync(line)) || null;
+}
+
+function resolveBinaryPath(staticCandidate, binaryName) {
+  return existingBinary(staticCandidate) || resolveBinaryFromSystem(binaryName) || null;
+}
+
+try { ffmpegPath = require('ffmpeg-static'); } catch (_e) {}
 try { const mod = require('ffprobe-static'); ffprobePath = mod.path || mod; } catch (_e) { try { ffprobePath = require('@ffprobe-installer/ffprobe').path; } catch (_e2) {} }
+ffmpegPath = resolveBinaryPath(ffmpegPath, 'ffmpeg');
+ffprobePath = resolveBinaryPath(ffprobePath, 'ffprobe');
+if (ffmpegPath) ffmpeg.setFfmpegPath(ffmpegPath);
 if (ffprobePath) ffmpeg.setFfprobePath(ffprobePath);
 
 const store = new Store();
@@ -52,6 +74,33 @@ function findAvailableLane(items, trackType, start, end, ignoreItemId) {
 function resolutionValue(v) { const map = { '720p': '1280x720', '1080p': '1920x1080', '1440p': '2560x1440', '4K': '3840x2160' }; return map[v] || null; }
 function qualityBitrate(v) { const map = { low: '1500k', medium: '4000k', high: '8000k', ultra: '16000k' }; return map[v] || map.high; }
 function deepClone(value) { return JSON.parse(JSON.stringify(value)); }
+function hasNonAscii(value) { return /[^\x00-\x7F]/.test(String(value || '')); }
+function safeAsciiName(value, fallback = 'export') {
+  const cleaned = String(value || fallback)
+    .replace(/[^\x20-\x7E]+/g, '_')
+    .replace(/[^a-zA-Z0-9._-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return cleaned || fallback;
+}
+function normalizeOutputPath(outputPath, format) {
+  const requested = String(outputPath || '');
+  const normalizedFormat = safeAsciiName(String(format || '')).toLowerCase() || 'mp4';
+  if (!requested) return requested;
+  if (path.extname(requested)) return requested;
+  return `${requested}.${normalizedFormat}`;
+}
+function ffmpegSafeOutputPath(outputPath, format) {
+  const normalized = normalizeOutputPath(outputPath, format);
+  if (!hasNonAscii(normalized)) return { finalPath: normalized, ffmpegPath: normalized };
+  const parsed = path.parse(normalized);
+  const suffix = `ffmpeg_${Date.now()}`;
+  const safeName = `${safeAsciiName(parsed.name || 'export')}_${suffix}${parsed.ext || `.${String(format || 'mp4').toLowerCase()}`}`;
+  return {
+    finalPath: normalized,
+    ffmpegPath: path.join(parsed.dir, safeName),
+  };
+}
 
 function parseFfmpegMetadata(stderr, filePath) {
   const lines = String(stderr || '').split(/\r?\n/);
@@ -761,7 +810,8 @@ ipcMain.handle('export-video', async (_event, payload) => {
   const { inputPath, outputPath, settings = {} } = payload || {};
   if (!inputPath || !outputPath) { const error = new Error('\u7f3a\u5c11\u8f93\u5165\u89c6\u9891\u6216\u8f93\u51fa\u8def\u5f84\u3002'); error.code = 'invalid_output_path'; throw error; }
   if (!fs.existsSync(inputPath)) { const error = new Error(`\u8f93\u5165\u89c6\u9891\u4e0d\u5b58\u5728\uff1a${inputPath}`); error.code = 'invalid_video_metadata'; throw error; }
-  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  const { finalPath: normalizedOutputPath, ffmpegPath: commandOutputPath } = ffmpegSafeOutputPath(outputPath, settings.format);
+  fs.mkdirSync(path.dirname(normalizedOutputPath), { recursive: true });
 
   let sourceMeta;
   try { sourceMeta = await ffprobeAsync(inputPath); } catch (error) { const wrapped = new Error(`\u65e0\u6cd5\u8bfb\u53d6\u89c6\u9891\u5143\u6570\u636e\uff1a${error.message}`); wrapped.code = error.code || 'missing_ffprobe'; throw wrapped; }
@@ -787,7 +837,7 @@ ipcMain.handle('export-video', async (_event, payload) => {
   await new Promise((resolve, reject) => {
     const cmd = ffmpeg();
     sourcePaths.forEach((source) => cmd.input(source));
-    cmd.output(outputPath).outputOptions('-y');
+    cmd.output(commandOutputPath).outputOptions('-y');
     const size = resolutionValue(settings.resolution); if (size) cmd.size(size); if (settings.fps) cmd.fps(Number(settings.fps)); cmd.videoBitrate(qualityBitrate(settings.quality));
     const filters = []; const concatInputs = [];
     composedSegments.forEach((segment, idx) => {
@@ -799,7 +849,12 @@ ipcMain.handle('export-video', async (_event, payload) => {
     cmd.complexFilter(filters); cmd.outputOptions('-map [outv]'); if (useAudio) cmd.outputOptions('-map [outa]'); else cmd.noAudio(); if (settings.format) cmd.format(String(settings.format));
     cmd.on('end', () => resolve(true)); cmd.on('error', reject); cmd.run();
   }).catch((error) => { throw new Error(`\u5bfc\u51fa\u6267\u884c\u5931\u8d25\uff1a${error.message}`); });
-  return { success: true, outputPath, warnings, message: `\u5bfc\u51fa\u5b8c\u6210\uff0c\u5171\u751f\u6210 ${composedSegments.length} \u4e2a\u65f6\u95f4\u6bb5\u3002` };
+  if (commandOutputPath !== normalizedOutputPath) {
+    if (!fs.existsSync(commandOutputPath)) throw new Error(`导出执行失败：临时输出文件不存在：${commandOutputPath}`);
+    if (fs.existsSync(normalizedOutputPath)) fs.unlinkSync(normalizedOutputPath);
+    fs.renameSync(commandOutputPath, normalizedOutputPath);
+  }
+  return { success: true, outputPath: normalizedOutputPath, warnings, message: `\u5bfc\u51fa\u5b8c\u6210\uff0c\u5171\u751f\u6210 ${composedSegments.length} \u4e2a\u65f6\u95f4\u6bb5\u3002` };
 });
 
 ipcMain.on('open-folder', (_event, targetPath) => { const folder = fs.existsSync(targetPath) && fs.statSync(targetPath).isDirectory() ? targetPath : path.dirname(targetPath || ''); if (folder) shell.openPath(folder); });

@@ -42,6 +42,14 @@ interface Point {
   y: number;
 }
 
+type EditHandleType = 'magnifier-center' | 'magnifier-radius' | 'pov-anchor' | 'pov-direction';
+
+interface EditHandle {
+  type: EditHandleType;
+  point: Point;
+  radius: number;
+}
+
 const OVERLAY_FPS = 15;
 const DEFAULT_MANUAL = { anchor: null as Point2D | null, directionDeg: null as number | null };
 const DEFAULT_PARAMS = {
@@ -59,6 +67,10 @@ const DEFAULT_PARAMS = {
 
 function clamp(value: number, minValue: number, maxValue: number): number {
   return Math.max(minValue, Math.min(maxValue, value));
+}
+
+function distanceBetween(a: Point, b: Point): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
 function nearestByTime<T extends { timestamp?: number; time?: number }>(items: T[] | undefined, currentTime: number, maxDelta = 0.4): T | null {
@@ -229,10 +241,19 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [rate, setRate] = useState(1);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [wrapperSize, setWrapperSize] = useState({ width: 0, height: 0 });
+  const [hoverHandle, setHoverHandle] = useState<EditHandleType | null>(null);
+  const [dragHandle, setDragHandle] = useState<EditHandleType | null>(null);
 
   useEffect(() => {
     fallbackNotifiedRef.current = false;
+    setHoverHandle(null);
+    setDragHandle(null);
   }, [videoPath]);
+  useEffect(() => {
+    setHoverHandle(null);
+    setDragHandle(null);
+    draggingRef.current = false;
+  }, [editableEffect?.id]);
   useEffect(() => {
     metadataCallbackRef.current = onMetadata;
   }, [onMetadata]);
@@ -353,6 +374,45 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const directionDeg = typeof keyframed?.directionDeg === 'number' ? keyframed.directionDeg : effect.manual.directionDeg ?? sample?.directionDeg ?? null;
     return { point, directionDeg };
   }, [currentTime, getTrackPoint]);
+
+  const getEditHandles = useCallback((effect: ReturnType<typeof normalizeEditableEffect>, canvas: HTMLCanvasElement): EditHandle[] => {
+    if (!effect) return [];
+    if (effect.operation === 'magnifier-effect') {
+      const resolved = resolveMagnifier(effect);
+      if (!resolved.point) return [];
+      const center = toCanvas(resolved.point, canvas);
+      const view = metrics(canvas);
+      const radius = Math.max(12, effect.params.magnifierRadius * view.scale);
+      return [
+        { type: 'magnifier-center', point: center, radius: 10 },
+        { type: 'magnifier-radius', point: { x: center.x + radius, y: center.y }, radius: 10 },
+      ];
+    }
+    if (effect.operation === 'player-pov') {
+      const resolved = resolvePov(effect);
+      if (!resolved.point) return [];
+      const anchor = toCanvas(resolved.point, canvas);
+      const view = metrics(canvas);
+      const length = Math.max(20, effect.params.fovLength * view.scale);
+      const direction = typeof resolved.directionDeg === 'number' ? resolved.directionDeg : 0;
+      const rad = (direction * Math.PI) / 180;
+      return [
+        { type: 'pov-anchor', point: anchor, radius: 10 },
+        { type: 'pov-direction', point: { x: anchor.x + Math.cos(rad) * length, y: anchor.y + Math.sin(rad) * length }, radius: 10 },
+      ];
+    }
+    return [];
+  }, [metrics, resolveMagnifier, resolvePov, toCanvas]);
+
+  const hitTestHandle = useCallback((clientX: number, clientY: number): EditHandle | null => {
+    const canvas = canvasRef.current;
+    if (!canvas || !activeEditableEffect || !interactive) return null;
+    const rect = canvas.getBoundingClientRect();
+    const cursor = { x: clientX - rect.left, y: clientY - rect.top };
+    const hit = getEditHandles(activeEditableEffect, canvas)
+      .find((handle) => distanceBetween(handle.point, cursor) <= handle.radius + 8);
+    return hit || null;
+  }, [activeEditableEffect, getEditHandles, interactive]);
 
   const captureKeyframe = useCallback((point: Point, directionDeg?: number) => {
     if (!activeEditableEffect) return;
@@ -528,6 +588,39 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     ctx.stroke();
   }, [metrics, resolvePov, toCanvas]);
 
+  const drawEditOverlay = useCallback((ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, effect: ReturnType<typeof normalizeEditableEffect>) => {
+    if (!effect || !interactive) return;
+    const handles = getEditHandles(effect, canvas);
+    if (!handles.length) return;
+    const centerHandle = handles.find((handle) => handle.type === 'magnifier-center' || handle.type === 'pov-anchor') || handles[0];
+    const secondaryHandle = handles.find((handle) => handle !== centerHandle) || null;
+
+    if (secondaryHandle) {
+      ctx.save();
+      ctx.setLineDash([6, 6]);
+      ctx.strokeStyle = effect.operation === 'magnifier-effect' ? 'rgba(255, 214, 74, 0.95)' : 'rgba(255, 159, 67, 0.95)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(centerHandle.point.x, centerHandle.point.y);
+      ctx.lineTo(secondaryHandle.point.x, secondaryHandle.point.y);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    handles.forEach((handle) => {
+      const active = dragHandle === handle.type || hoverHandle === handle.type;
+      ctx.save();
+      ctx.fillStyle = handle.type.includes('radius') || handle.type.includes('direction') ? '#0f172a' : '#ffffff';
+      ctx.strokeStyle = effect.operation === 'magnifier-effect' ? '#ffd64a' : '#ff9f43';
+      ctx.lineWidth = active ? 3 : 2;
+      ctx.beginPath();
+      ctx.arc(handle.point.x, handle.point.y, active ? handle.radius + 2 : handle.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    });
+  }, [dragHandle, getEditHandles, hoverHandle, interactive]);
+
   const draw = useCallback(() => {
     const canvas = ensureCanvas();
     const ctx = canvas?.getContext('2d');
@@ -541,7 +634,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       if (effect.operation === 'magnifier-effect') drawMagnifier(ctx, canvas, normalizeEditableEffect(effect));
       if (effect.operation === 'player-pov') drawPov(ctx, canvas, normalizeEditableEffect(effect));
     });
-  }, [drawDetection, drawMagnifier, drawPlayerHighlight, drawPov, drawTracking, ensureCanvas, previewEffects]);
+    if (activeEditableEffect && interactive) drawEditOverlay(ctx, canvas, activeEditableEffect);
+  }, [activeEditableEffect, drawDetection, drawEditOverlay, drawMagnifier, drawPlayerHighlight, drawPov, drawTracking, ensureCanvas, interactive, previewEffects]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -673,20 +767,57 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const canvas = canvasRef.current;
     if (!canvas || !interactive || !activeEditableEffect) return;
     const point = toVideo(event.clientX, event.clientY, canvas);
+    const handle = hitTestHandle(event.clientX, event.clientY);
+    setHoverHandle(handle?.type || null);
     if (!point) return;
     hoverPointRef.current = point;
-    if (activeEditableEffect.operation === 'magnifier-effect' && activeEditableEffect.interactionMode === 'cursor-follow') {
+    if (!dragHandle) return;
+
+    if (dragHandle === 'magnifier-center') {
       onSetEffectTool('magnifier-effect');
-      onSetControlMode('hybrid');
-      captureKeyframe(point);
-    }
-    if (activeEditableEffect.operation === 'player-pov' && draggingRef.current) {
-      onSetEffectTool('player-pov');
+      onSetInteractionMode('pinned');
       onSetControlMode('manual');
-      if (!activeEditableEffect.manual.anchor) onSetManualAnchor(point);
-      const anchor = activeEditableEffect.manual.anchor || point;
-      const directionDeg = (Math.atan2(point.y - anchor.y, point.x - anchor.x) * 180) / Math.PI;
+      onSetManualAnchor(point);
+      captureKeyframe(point);
+      return;
+    }
+
+    if (dragHandle === 'magnifier-radius') {
+      const resolved = resolveMagnifier(activeEditableEffect);
+      const anchor = activeEditableEffect.manual.anchor || resolved.point;
+      if (!anchor) return;
+      onSetEffectTool('magnifier-effect');
+      onSetInteractionMode('pinned');
+      onSetControlMode('manual');
+      onSetManualAnchor(anchor);
+      onPatchEffectParams({ magnifierRadius: Math.round(clamp(distanceBetween(anchor, point), 20, 520)) });
+      captureKeyframe(anchor);
+      return;
+    }
+
+    if (dragHandle === 'pov-anchor') {
+      const resolved = resolvePov(activeEditableEffect);
+      const directionDeg = typeof resolved.directionDeg === 'number' ? resolved.directionDeg : (activeEditableEffect.manual.directionDeg ?? 0);
+      onSetEffectTool('player-pov');
+      onSetInteractionMode('pinned');
+      onSetControlMode('manual');
+      onSetManualAnchor(point);
       onSetManualDirectionDeg(directionDeg);
+      captureKeyframe(point, directionDeg);
+      return;
+    }
+
+    if (dragHandle === 'pov-direction') {
+      const resolved = resolvePov(activeEditableEffect);
+      const anchor = activeEditableEffect.manual.anchor || resolved.point;
+      if (!anchor) return;
+      const directionDeg = (Math.atan2(point.y - anchor.y, point.x - anchor.x) * 180) / Math.PI;
+      onSetEffectTool('player-pov');
+      onSetInteractionMode('pinned');
+      onSetControlMode('manual');
+      onSetManualAnchor(anchor);
+      onSetManualDirectionDeg(directionDeg);
+      onPatchEffectParams({ fovLength: Math.round(clamp(distanceBetween(anchor, point), 40, 2400)) });
       captureKeyframe(anchor, directionDeg);
     }
   };
@@ -702,28 +833,39 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       onSetInteractionMode('auto-target');
       return;
     }
+    const handle = hitTestHandle(event.clientX, event.clientY);
+    if (!handle) {
+      if (activeEditableEffect.operation === 'magnifier-effect') {
+        onSetEffectTool('magnifier-effect');
+        onSetInteractionMode('pinned');
+        onSetControlMode('manual');
+        onSetManualAnchor(point);
+        captureKeyframe(point);
+        draggingRef.current = true;
+        setDragHandle('magnifier-center');
+        return;
+      }
+      if (activeEditableEffect.operation === 'player-pov') {
+        onSetEffectTool('player-pov');
+        onSetInteractionMode('pinned');
+        onSetControlMode('manual');
+        onSetManualAnchor(point);
+        onSetManualDirectionDeg(activeEditableEffect.manual.directionDeg ?? 0);
+        draggingRef.current = true;
+        setDragHandle('pov-direction');
+        return;
+      }
+      return;
+    }
     draggingRef.current = true;
-    if (activeEditableEffect.operation === 'magnifier-effect') {
-      onSetEffectTool('magnifier-effect');
-      onSetInteractionMode('pinned');
-      onSetControlMode('manual');
-      onSetManualAnchor(point);
-      captureKeyframe(point);
-    }
-    if (activeEditableEffect.operation === 'player-pov') {
-      onSetEffectTool('player-pov');
-      onSetInteractionMode('pinned');
-      onSetControlMode('manual');
-      onSetManualAnchor(point);
-    }
+    setDragHandle(handle.type);
   };
 
   const handleMouseLeave = () => {
     draggingRef.current = false;
+    setDragHandle(null);
+    setHoverHandle(null);
     hoverPointRef.current = null;
-    if (activeEditableEffect?.operation === 'magnifier-effect' && activeEditableEffect.interactionMode === 'cursor-follow' && activeEditableEffect.controlMode === 'hybrid') {
-      onSetManualAnchor(null);
-    }
   };
 
   const handleWheel = (event: React.WheelEvent<HTMLCanvasElement>) => {
@@ -739,6 +881,28 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     else if (event.ctrlKey) onPatchEffectParams({ fovDim: Number(clamp(activeEditableEffect.params.fovDim + step * 0.03, 0, 0.95).toFixed(3)) });
     else onPatchEffectParams({ fovLength: Math.round(clamp(activeEditableEffect.params.fovLength + step * 20, 40, 2400)) });
   };
+
+  const editorStatusText = useMemo(() => {
+    if (!activeEditableEffect || !interactive) return null;
+    if (activeEditableEffect.operation === 'magnifier-effect') {
+      const mode = activeEditableEffect.interactionMode === 'auto-target'
+        ? '自动跟随'
+        : activeEditableEffect.interactionMode === 'cursor-follow'
+          ? '鼠标跟随'
+          : '手动锚点';
+      return `${activeEditableEffect.label} | ${mode} | 拖动中心点或半径手柄编辑`;
+    }
+    const mode = activeEditableEffect.interactionMode === 'auto-target' ? '自动跟随' : '手动锚点';
+    return `${activeEditableEffect.label} | ${mode} | 拖动锚点或方向手柄编辑`;
+  }, [activeEditableEffect, interactive]);
+
+  const canvasCursor = useMemo(() => {
+    if (!interactive) return 'default';
+    const handle = dragHandle || hoverHandle;
+    if (handle === 'magnifier-radius' || handle === 'pov-direction') return 'grab';
+    if (handle === 'magnifier-center' || handle === 'pov-anchor') return 'move';
+    return 'crosshair';
+  }, [dragHandle, hoverHandle, interactive]);
 
   if (!videoPath) {
     return (
@@ -765,13 +929,15 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         <canvas
           ref={canvasRef}
           className={`selection-canvas ${interactive ? 'interactive' : 'passive'}`}
+          style={{ cursor: canvasCursor }}
           onMouseMove={handleMouseMove}
           onMouseDown={handleMouseDown}
-          onMouseUp={() => { draggingRef.current = false; }}
+          onMouseUp={() => { draggingRef.current = false; setDragHandle(null); }}
           onMouseLeave={handleMouseLeave}
           onWheel={handleWheel}
           onContextMenu={(event) => event.preventDefault()}
         />
+        {editorStatusText ? <div className="editor-state-pill">{editorStatusText}</div> : null}
         {interactionHintText && interactive ? <div className="interaction-hint-pill">{interactionHintText}</div> : null}
         {loadError ? <div className="processing-overlay"><span>{loadError}</span></div> : null}
         {isProcessing ? <div className="processing-overlay"><div className="spinner" /><span>正在生成预览...</span></div> : null}

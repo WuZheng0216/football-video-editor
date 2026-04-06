@@ -295,6 +295,7 @@ function toPreviewEffectLayer(item: EffectItem, fallbackResult: any, editable = 
     label: item.label,
     operation: item.operation,
     lane: Math.max(0, Number(item.lane || 0)),
+    source: 'timeline',
     result: item.payload?.previewResult || fallbackResult || null,
     controlMode: item.controlMode || 'hybrid',
     interactionMode: item.payload?.interactionMode || 'pinned',
@@ -492,14 +493,12 @@ function App() {
       draft: true,
     };
   }, [activeResult, effectControl, effectKeyframes, previewTargetBinding, selectedAiPreset, selectedEffect, trackingOverlay]);
+  void draftPreviewEffect;
   const editableEffect = useMemo<PreviewEffectLayer | null>(() => {
-    if (selectedEffect) return toPreviewEffectLayer(selectedEffect, activeResult, true);
-    return draftPreviewEffect;
-  }, [activeResult, draftPreviewEffect, selectedEffect]);
-  const previewEffects = useMemo(
-    () => (editableEffect ? [...activeTimelineEffects.filter((item) => item.id !== editableEffect.id), editableEffect].sort(previewEffectComparator) : activeTimelineEffects),
-    [activeTimelineEffects, editableEffect],
-  );
+    if (!selectedEffect || !selectedEffect.enabled || playheadTime < selectedEffect.start || playheadTime >= selectedEffect.end) return null;
+    return toPreviewEffectLayer(selectedEffect, activeResult, true);
+  }, [activeResult, playheadTime, selectedEffect]);
+  const previewEffects = useMemo(() => activeTimelineEffects, [activeTimelineEffects]);
 
   const pushHistory = useCallback(() => {
     setUndoStack((prev) => [...prev.slice(-19), clone(tracksRef.current)]);
@@ -551,6 +550,121 @@ function App() {
         : { ...track, items: track.items.map((item) => item.id !== selectedEffect.id ? item : updater(item as EffectItem)) }
     )), videoPath, Number(videoInfo?.duration || 0)));
   }, [selectedEffect, videoInfo, videoPath]);
+
+  const buildTimelineEffectItem = useCallback((tool: EffectOperation, existing?: EffectItem | null): EffectItem | null => {
+    const range = rangeForScope(aiRunScope);
+    const start = Math.max(0, range.start);
+    const end = Math.max(start + MIN_DURATION, range.end);
+    const binding = effectControl.targetBinding || null;
+    const highlightBindings = Array.isArray(effectControl.targetBindings) ? effectControl.targetBindings : [];
+    const trackSamples = Array.isArray(analysisCache['track-players']?.result?.trackSamples)
+      ? analysisCache['track-players']?.result?.trackSamples
+      : Array.isArray(existing?.payload?.trackSamples)
+        ? existing?.payload?.trackSamples
+        : [];
+
+    if (tool === 'player-highlight' && !highlightBindings.length) {
+      setStatusText('请先从目标列表中选择至少一名球员，再创建多人高亮片段。');
+      return null;
+    }
+
+    return {
+      id: existing?.id || makeId('effect'),
+      kind: 'effect',
+      trackId: EFFECT_TRACK_ID,
+      label: existing?.label || `${PRESET_LABEL[tool]} ${formatTime(start)}-${formatTime(end)}`,
+      start,
+      end,
+      lane: existing?.lane ?? 0,
+      enabled: existing?.enabled ?? true,
+      operation: tool,
+      effectSource: existing?.effectSource || 'manual',
+      resultKey: existing?.resultKey || tool,
+      controlMode: tool === 'magnifier-effect' || tool === 'player-pov' ? effectControl.controlMode : undefined,
+      manual: tool === 'magnifier-effect' || tool === 'player-pov' ? clone(effectControl.manual) : clone(DEFAULT_EFFECT.manual),
+      params: clone(effectControl.params),
+      payload: {
+        ...(existing?.payload || {}),
+        confidence: aiRuntimeConfig.confidenceThreshold,
+        maxFrames: aiRuntimeConfig.maxFrames,
+        focusMode: binding?.class === 'ball' ? 'ball' : aiRuntimeConfig.focusMode,
+        modelPreference: aiRuntimeConfig.modelPreference,
+        modelPath: aiRuntimeConfig.modelPreference === 'custom' ? aiRuntimeConfig.customModelPath.trim() : undefined,
+        scope: aiRunScope,
+        rangeStart: start,
+        rangeEnd: end,
+        targetBinding: tool === 'player-highlight' ? (highlightBindings[0] || null) : binding,
+        targetBindings: tool === 'player-highlight' ? clone(highlightBindings) : [],
+        keyframes: tool === 'magnifier-effect' || tool === 'player-pov' ? clone(effectKeyframes) : [],
+        interactionMode: tool === 'magnifier-effect' || tool === 'player-pov' ? effectControl.interactionMode : undefined,
+        targets: Array.isArray(existing?.payload?.targets) ? existing?.payload?.targets : availableTargets,
+        trackSamples: tool === 'player-highlight' ? trackSamples : existing?.payload?.trackSamples,
+        showLabel: tool === 'player-highlight' ? effectControl.highlightShowLabel : undefined,
+        previewResult: existing?.payload?.previewResult
+          || analysisCache[tool as AiPresetId]?.result
+          || (tool === 'player-highlight' ? analysisCache['track-players']?.result || null : null),
+      },
+    };
+  }, [aiRunScope, aiRuntimeConfig, analysisCache, availableTargets, effectControl, effectKeyframes, previewTargetBinding, rangeForScope]);
+
+  const createTimelineEffectClip = useCallback((tool: EffectOperation) => {
+    const effectItem = buildTimelineEffectItem(tool);
+    if (!effectItem) return;
+    mutateTracks((prev) => prev.map((track) => {
+      if (track.id !== EFFECT_TRACK_ID) return track;
+      const lane = findAvailableLane(track.items, track.type, effectItem.start, effectItem.end);
+      return { ...track, items: [...track.items, { ...effectItem, lane }] };
+    }));
+    setSelectedAiPreset(tool as AiPresetId);
+    setSelection({ trackId: EFFECT_TRACK_ID, itemId: effectItem.id });
+    setPreviewTargetBinding(effectItem.payload?.targetBinding || null);
+    openSidebar('ai');
+    setStatusText(`${PRESET_LABEL[tool]} 片段已创建，并进入画布编辑模式。`);
+  }, [buildTimelineEffectItem, mutateTracks, openSidebar]);
+
+  const applyDraftToSelectedEffect = useCallback(() => {
+    if (!selectedEffect) {
+      setStatusText('请先在时间线中选中一个特效片段。');
+      return;
+    }
+    if (selectedEffect.operation !== selectedAiPreset || selectedEffect.operation === 'detect-players' || selectedEffect.operation === 'track-players') {
+      setStatusText('当前选中的片段与右侧工具不一致，请先选中对应特效片段。');
+      return;
+    }
+    const nextItem = buildTimelineEffectItem(selectedEffect.operation, selectedEffect);
+    if (!nextItem) return;
+    mutateTracks((prev) => prev.map((track) => (
+      track.id !== EFFECT_TRACK_ID
+        ? track
+        : { ...track, items: track.items.map((item) => item.id !== nextItem.id ? item : nextItem) }
+    )));
+    setStatusText(`${selectedEffect.label} 已按当前参数更新。`);
+  }, [buildTimelineEffectItem, mutateTracks, selectedAiPreset, selectedEffect]);
+
+  const resetSelectedEffectToAutoTarget = useCallback(() => {
+    if (!selectedEffect || (selectedEffect.operation !== 'magnifier-effect' && selectedEffect.operation !== 'player-pov')) {
+      setStatusText('请先选中放大镜或球员视角片段。');
+      return;
+    }
+    setEffectControl((prev) => ({
+      ...prev,
+      controlMode: 'hybrid',
+      interactionMode: 'auto-target',
+      manual: { anchor: null, directionDeg: null },
+    }));
+    patchSelectedEffect((value) => ({
+      ...value,
+      controlMode: 'hybrid',
+      manual: { anchor: null, directionDeg: null },
+      payload: {
+        ...(value.payload || {}),
+        interactionMode: 'auto-target',
+        keyframes: [],
+      },
+    }));
+    setDraftEffectKeyframes([]);
+    setStatusText(`${selectedEffect.label} 已重置为自动跟随。`);
+  }, [patchSelectedEffect, selectedEffect]);
 
   const registerMediaItem = useCallback(async (partial: Omit<MediaLibraryItem, 'id' | 'createdAt'>) => {
     if (!partial.path) return;
@@ -777,7 +891,7 @@ function App() {
     if (!selectedEntry?.item && !videoDurationReady) return setStatusText('视频时长还没读取完成，请等待播放器拿到完整时长后再运行 AI。');
     if (!videoPath || !ipcRenderer) return setStatusText('请先导入源视频，再运行 AI。');
     const range = rangeForScope(aiRunScope);
-    const binding = previewTargetBinding || effectControl.targetBinding || null;
+    const binding = effectControl.targetBinding || null;
     const highlightBindings = Array.isArray(effectControl.targetBindings) ? effectControl.targetBindings : [];
     const highlightTrackSamples = Array.isArray(analysisCache['track-players']?.result?.trackSamples)
       ? analysisCache['track-players']?.result?.trackSamples
@@ -930,12 +1044,20 @@ function App() {
   }, [mutateTracks]);
 
   const toggleItem = useCallback((trackId: string, itemId: string) => {
+    const current = tracksRef.current.find((track) => track.id === trackId)?.items.find((item) => item.id === itemId) || null;
     mutateTracks((prev) => prev.map((track) => track.id !== trackId ? track : { ...track, items: track.items.map((item) => item.id !== itemId ? item : { ...item, enabled: !item.enabled }) }));
-  }, [mutateTracks]);
+    if (current?.kind === 'effect' && current.enabled && selection.trackId === trackId && selection.itemId === itemId) {
+      setSelection({ trackId: null, itemId: null });
+    }
+  }, [mutateTracks, selection.itemId, selection.trackId]);
 
   const deleteItem = useCallback((trackId: string, itemId: string) => {
+    const current = tracksRef.current.find((track) => track.id === trackId)?.items.find((item) => item.id === itemId) || null;
     mutateTracks((prev) => prev.map((track) => track.id !== trackId ? track : { ...track, items: track.items.filter((item) => item.id !== itemId) }));
-    if (selection.trackId === trackId && selection.itemId === itemId) setSelection({ trackId: null, itemId: null });
+    if (selection.trackId === trackId && selection.itemId === itemId) {
+      setSelection({ trackId: null, itemId: null });
+      if (current?.kind === 'effect') setDraftEffectKeyframes([]);
+    }
     setStatusText('已删除时间线片段。');
   }, [mutateTracks, selection.itemId, selection.trackId]);
 
@@ -1111,6 +1233,8 @@ function App() {
             previewTargetBinding={previewTargetBinding}
             highlightTargetBindings={effectControl.targetBindings}
             highlightShowLabel={effectControl.highlightShowLabel}
+            selectedEffectLabel={selectedEffect?.label || null}
+            selectedEffectOperation={selectedEffect?.operation || null}
             onPresetChange={setSelectedAiPreset}
             onRunPreset={runAiPreset}
             onScopeChange={setAiRunScope}
@@ -1140,6 +1264,9 @@ function App() {
                 patchSelectedEffect((item) => ({ ...item, payload: { ...(item.payload || {}), showLabel: value } }));
               }
             }}
+            onCreateEffectClip={createTimelineEffectClip}
+            onApplyToSelectedEffect={applyDraftToSelectedEffect}
+            onResetToAutoTarget={resetSelectedEffectToAutoTarget}
           />
         )
         : (
@@ -1309,7 +1436,19 @@ function App() {
                   onSetManualDirectionDeg={(directionDeg) => { setEffectControl((prev) => ({ ...prev, manual: { ...prev.manual, directionDeg } })); patchSelectedEffect((value) => ({ ...value, manual: { ...(value.manual || DEFAULT_EFFECT.manual), directionDeg } })); }}
                   onPatchEffectParams={(patch) => { setEffectControl((prev) => ({ ...prev, params: { ...prev.params, ...patch } })); patchSelectedEffect((value) => ({ ...value, params: { ...(value.params || {}), ...patch } })); }}
                   onPatchEffectKeyframes={(keyframes) => { if (selectedEffect) patchSelectedEffect((value) => ({ ...value, payload: { ...(value.payload || {}), keyframes } })); else setDraftEffectKeyframes(keyframes); }}
-                  onClearManualControl={(fallbackMode = 'hybrid') => { setEffectControl((prev) => ({ ...prev, controlMode: fallbackMode, manual: { anchor: null, directionDeg: null } })); patchSelectedEffect((value) => ({ ...value, controlMode: fallbackMode, manual: { anchor: null, directionDeg: null } })); }}
+                  onClearManualControl={(fallbackMode = 'hybrid') => {
+                    setEffectControl((prev) => ({ ...prev, controlMode: fallbackMode, manual: { anchor: null, directionDeg: null } }));
+                    if (selectedEffect) {
+                      patchSelectedEffect((value) => ({
+                        ...value,
+                        controlMode: fallbackMode,
+                        manual: { anchor: null, directionDeg: null },
+                        payload: { ...(value.payload || {}), keyframes: [] },
+                      }));
+                    } else {
+                      setDraftEffectKeyframes([]);
+                    }
+                  }}
                   command={playerCommand}
                 />
               </div>

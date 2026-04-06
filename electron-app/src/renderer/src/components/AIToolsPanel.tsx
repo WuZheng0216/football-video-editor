@@ -7,10 +7,13 @@ import {
   AiRuntimeConfig,
   AiTarget,
   EffectControlState,
+  EffectOperation,
   EffectTool,
   HighlightClip,
   TargetBinding,
 } from '../types';
+
+type TimelineEffectPreset = 'magnifier-effect' | 'player-pov' | 'player-highlight';
 
 interface AIToolsPanelProps {
   videoPath: string;
@@ -29,6 +32,10 @@ interface AIToolsPanelProps {
   highlightClips: HighlightClip[];
   addedHighlightKeys: ReadonlySet<string>;
   previewTargetBinding: TargetBinding | null;
+  highlightTargetBindings: TargetBinding[];
+  highlightShowLabel: boolean;
+  selectedEffectLabel: string | null;
+  selectedEffectOperation: EffectOperation | null;
   onPresetChange: (tool: AiPresetId) => void;
   onRunPreset: (tool: AiPresetId) => void;
   onScopeChange: (scope: AiRunScope) => void;
@@ -44,20 +51,24 @@ interface AIToolsPanelProps {
   onMaxHighlightsChange: (value: number) => void;
   onAddHighlightClip: (clip: HighlightClip) => void;
   onAddAllHighlightClips: () => void;
-  highlightTargetBindings: TargetBinding[];
-  highlightShowLabel: boolean;
   onHighlightTargetsChange: (targets: TargetBinding[]) => void;
   onHighlightShowLabelChange: (value: boolean) => void;
+  onCreateEffectClip: (tool: TimelineEffectPreset) => void;
+  onApplyToSelectedEffect: () => void;
+  onResetToAutoTarget: () => void;
 }
 
 const PRESETS: Record<AiPresetId, { label: string; desc: string }> = {
-  'detect-players': { label: '球员检测', desc: '检测当前范围内的球员和足球候选框。' },
-  'track-players': { label: '片段跟踪', desc: '基于整段视频做多目标跟踪，并输出稳定轨迹。' },
-  'magnifier-effect': { label: '放大镜', desc: '把跟踪目标或手动锚点做成放大镜特效。' },
-  'player-pov': { label: '球员视角', desc: '围绕选中球员或手动方向生成 POV 视角特效。' },
-  'player-highlight': { label: '多选高亮', desc: '从稳定轨迹中多选球员，持续描边高亮。' },
-  'auto-highlight': { label: '自动高光', desc: '根据比赛节奏自动挑出值得剪辑的片段。' },
+  'detect-players': { label: '目标检测', desc: '逐帧检测球员或足球，生成检测框结果。' },
+  'track-players': { label: '片段跟踪', desc: '对整段视频进行多目标跟踪，生成稳定轨迹与目标列表。' },
+  'magnifier-effect': { label: '放大镜', desc: '在时间线片段上叠加放大镜特效，支持手动或自动跟随。' },
+  'player-pov': { label: '球员视角', desc: '生成球员 POV 扇形视野遮罩，可在画布上直接拖拽编辑。' },
+  'player-highlight': { label: '多人高亮', desc: '对选中的多个球员持续加描边与光晕高亮。' },
+  'auto-highlight': { label: '自动高光', desc: '自动评分比赛片段，生成可加入素材轨的候选高光。' },
 };
+
+const ANALYSIS_PRESETS: AiPresetId[] = ['detect-players', 'track-players', 'auto-highlight'];
+const TIMELINE_PRESETS: TimelineEffectPreset[] = ['magnifier-effect', 'player-pov', 'player-highlight'];
 
 const clipSignature = (start: number, end: number) => `${start.toFixed(3)}_${end.toFixed(3)}`;
 
@@ -81,6 +92,10 @@ function sameTarget(a: TargetBinding | null | undefined, b: TargetBinding | null
   return String(a.label || '') === String(b.label || '');
 }
 
+function isTimelineEffectPreset(preset: AiPresetId): preset is TimelineEffectPreset {
+  return TIMELINE_PRESETS.includes(preset as TimelineEffectPreset);
+}
+
 const AIToolsPanel: React.FC<AIToolsPanelProps> = ({
   videoPath,
   videoInfo,
@@ -98,6 +113,10 @@ const AIToolsPanel: React.FC<AIToolsPanelProps> = ({
   highlightClips,
   addedHighlightKeys,
   previewTargetBinding,
+  highlightTargetBindings,
+  highlightShowLabel,
+  selectedEffectLabel,
+  selectedEffectOperation,
   onPresetChange,
   onRunPreset,
   onScopeChange,
@@ -113,13 +132,17 @@ const AIToolsPanel: React.FC<AIToolsPanelProps> = ({
   onMaxHighlightsChange,
   onAddHighlightClip,
   onAddAllHighlightClips,
-  highlightTargetBindings,
-  highlightShowLabel,
   onHighlightTargetsChange,
   onHighlightShowLabelChange,
+  onCreateEffectClip,
+  onApplyToSelectedEffect,
+  onResetToAutoTarget,
 }) => {
   const showEffectControls = activePreset === 'magnifier-effect' || activePreset === 'player-pov';
   const showPlayerHighlightControls = activePreset === 'player-highlight';
+  const isTimelinePreset = isTimelineEffectPreset(activePreset);
+  const canApplyToSelectedEffect = Boolean(selectedEffectLabel && selectedEffectOperation === activePreset && isTimelinePreset);
+  const canResetToAutoTarget = Boolean(selectedEffectLabel && selectedEffectOperation === activePreset && showEffectControls);
 
   const toggleHighlightTarget = (target: TargetBinding) => {
     const exists = highlightTargetBindings.some((item) => sameTarget(item, target));
@@ -130,22 +153,40 @@ const AIToolsPanel: React.FC<AIToolsPanelProps> = ({
     onHighlightTargetsChange([...highlightTargetBindings, target]);
   };
 
+  const effectStatusText = canApplyToSelectedEffect
+    ? `当前正在编辑：${selectedEffectLabel}`
+    : selectedEffectLabel
+      ? `当前选中的是其它特效：${selectedEffectLabel}。可以继续配置参数，或先切回对应片段。`
+      : '当前未选中特效。右侧参数会作为待创建片段的草稿保存，不会直接叠加到播放器。';
+
   return (
     <div className="ai-tools-panel">
       <div className="ai-panel-header">
         <div>
           <h3>AI 工具</h3>
-          <p>{videoInfo?.filename || '未加载视频'} | {scopeLabel}</p>
+          <p>{videoInfo?.filename || '未打开视频'} | {scopeLabel}</p>
         </div>
         <button className="run-btn" onClick={() => onRunPreset(activePreset)} disabled={!videoPath || Boolean(runningTool)}>
-          {runningTool === activePreset ? '处理中...' : `运行 ${PRESETS[activePreset].label}`}
+          {runningTool === activePreset ? '运行中...' : `运行 ${PRESETS[activePreset].label}`}
         </button>
       </div>
 
       <section className="panel-block">
-        <div className="block-title">工具选择</div>
+        <div className="block-title">分析工具</div>
         <div className="preset-grid">
-          {(Object.keys(PRESETS) as AiPresetId[]).map((preset) => (
+          {ANALYSIS_PRESETS.map((preset) => (
+            <button key={preset} className={`preset-card ${activePreset === preset ? 'active' : ''}`} onClick={() => onPresetChange(preset)}>
+              <strong>{PRESETS[preset].label}</strong>
+              <span>{PRESETS[preset].desc}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel-block">
+        <div className="block-title">时间线特效</div>
+        <div className="preset-grid">
+          {TIMELINE_PRESETS.map((preset) => (
             <button
               key={preset}
               className={`preset-card ${activePreset === preset ? 'active' : ''}`}
@@ -159,6 +200,18 @@ const AIToolsPanel: React.FC<AIToolsPanelProps> = ({
             </button>
           ))}
         </div>
+        {isTimelinePreset ? (
+          <>
+            <div className="effect-editor-status">{effectStatusText}</div>
+            <div className="inline-actions">
+              <button onClick={() => onCreateEffectClip(activePreset as TimelineEffectPreset)} disabled={!videoPath}>创建特效片段并进入编辑</button>
+              <button onClick={onApplyToSelectedEffect} disabled={!canApplyToSelectedEffect}>应用到当前选中特效</button>
+              {showEffectControls ? (
+                <button onClick={onResetToAutoTarget} disabled={!canResetToAutoTarget}>重置为自动跟随</button>
+              ) : null}
+            </div>
+          </>
+        ) : null}
       </section>
 
       <section className="panel-block">
@@ -166,7 +219,7 @@ const AIToolsPanel: React.FC<AIToolsPanelProps> = ({
         <div className="chip-row">
           {(['selection', 'track', 'full'] as AiRunScope[]).map((scope) => (
             <button key={scope} className={`chip ${aiRunScope === scope ? 'active' : ''}`} onClick={() => onScopeChange(scope)}>
-              {scope === 'selection' ? '当前选中片段' : scope === 'track' ? '当前轨道片段' : '整段视频'}
+              {scope === 'selection' ? '当前选中片段' : scope === 'track' ? '当前轨道范围' : '整段视频'}
             </button>
           ))}
         </div>
@@ -174,7 +227,7 @@ const AIToolsPanel: React.FC<AIToolsPanelProps> = ({
       </section>
 
       <section className="panel-block">
-        <div className="block-title">模型与阈值</div>
+        <div className="block-title">运行参数</div>
         <label>
           置信度阈值 {Math.round(aiRuntimeConfig.confidenceThreshold * 100)}%
           <input
@@ -196,10 +249,10 @@ const AIToolsPanel: React.FC<AIToolsPanelProps> = ({
         <label>
           模型偏好
           <select value={aiRuntimeConfig.modelPreference} onChange={(event) => onAiRuntimeConfigChange({ ...aiRuntimeConfig, modelPreference: event.target.value as AiRuntimeConfig['modelPreference'] })}>
-            <option value="best">最佳质量</option>
-            <option value="balanced">平衡</option>
-            <option value="fast">快速</option>
-            <option value="custom">自定义</option>
+            <option value="best">最优质量</option>
+            <option value="balanced">平衡模式</option>
+            <option value="fast">快速模式</option>
+            <option value="custom">自定义模型</option>
           </select>
         </label>
         {aiRuntimeConfig.modelPreference === 'custom' ? (
@@ -214,7 +267,7 @@ const AIToolsPanel: React.FC<AIToolsPanelProps> = ({
           </label>
         ) : null}
         <label>
-          最多处理帧数
+          最大处理帧数
           <input
             type="number"
             min="0"
@@ -226,7 +279,7 @@ const AIToolsPanel: React.FC<AIToolsPanelProps> = ({
 
       {showEffectControls ? (
         <section className="panel-block">
-          <div className="block-title">交互模式</div>
+          <div className="block-title">画布编辑方式</div>
           <div className="chip-row">
             {(['auto', 'hybrid', 'manual'] as const).map((mode) => (
               <button key={mode} className={`chip ${effectControl.controlMode === mode ? 'active' : ''}`} onClick={() => onSetControlMode(mode)}>
@@ -237,7 +290,7 @@ const AIToolsPanel: React.FC<AIToolsPanelProps> = ({
           <div className="chip-row">
             {(['cursor-follow', 'auto-target', 'pinned'] as const).map((mode) => (
               <button key={mode} className={`chip ${effectControl.interactionMode === mode ? 'active' : ''}`} onClick={() => onSetInteractionMode(mode)}>
-                {mode === 'cursor-follow' ? '鼠标跟随' : mode === 'auto-target' ? '跟踪目标' : '固定锚点'}
+                {mode === 'cursor-follow' ? '鼠标跟随' : mode === 'auto-target' ? '自动跟随目标' : '固定锚点'}
               </button>
             ))}
           </div>
@@ -245,7 +298,7 @@ const AIToolsPanel: React.FC<AIToolsPanelProps> = ({
           {activePreset === 'magnifier-effect' ? (
             <>
               <label>
-                半径
+                放大镜半径
                 <input type="number" min="20" max="520" value={effectControl.params.magnifierRadius} onChange={(event) => onPatchEffectParams({ magnifierRadius: Number(event.target.value) || 120 })} />
               </label>
               <label>
@@ -253,7 +306,7 @@ const AIToolsPanel: React.FC<AIToolsPanelProps> = ({
                 <input type="number" min="1" max="8" step="0.1" value={effectControl.params.magnifierZoom} onChange={(event) => onPatchEffectParams({ magnifierZoom: Number(event.target.value) || 2 })} />
               </label>
               <label>
-                羽化
+                羽化强度
                 <input type="number" min="0" max="64" step="0.5" value={effectControl.params.magnifierFeather} onChange={(event) => onPatchEffectParams({ magnifierFeather: Number(event.target.value) || 10 })} />
               </label>
             </>
@@ -262,22 +315,24 @@ const AIToolsPanel: React.FC<AIToolsPanelProps> = ({
           {activePreset === 'player-pov' ? (
             <>
               <label>
-                视野角度
+                视场角
                 <input type="number" min="10" max="170" value={effectControl.params.fovAperture} onChange={(event) => onPatchEffectParams({ fovAperture: Number(event.target.value) || 60 })} />
               </label>
               <label>
-                视野长度
+                视距长度
                 <input type="number" min="40" max="2400" value={effectControl.params.fovLength} onChange={(event) => onPatchEffectParams({ fovLength: Number(event.target.value) || 320 })} />
               </label>
               <label>
-                外围压暗
+                遮罩强度
                 <input type="number" min="0" max="0.95" step="0.01" value={effectControl.params.fovDim} onChange={(event) => onPatchEffectParams({ fovDim: Number(event.target.value) || 0.5 })} />
               </label>
             </>
           ) : null}
 
           <div className="hint-line">
-            {effectControl.targetBinding?.label ? `当前绑定：${effectControl.targetBinding.label}` : '可以先从下面的目标卡片里选一个球员，再应用到放大镜或 POV。'}
+            {effectControl.targetBinding?.label
+              ? `当前单目标绑定：${effectControl.targetBinding.label}`
+              : '可以先在下方目标列表中选择球员，再创建或编辑放大镜 / POV 片段。'}
           </div>
           {effectControl.targetBinding ? (
             <div className="inline-actions">
@@ -289,13 +344,13 @@ const AIToolsPanel: React.FC<AIToolsPanelProps> = ({
 
       {showPlayerHighlightControls ? (
         <section className="panel-block">
-          <div className="block-title">持续高亮参数</div>
+          <div className="block-title">多人高亮参数</div>
           <label>
             描边宽度
             <input type="number" min="1" max="12" step="0.5" value={effectControl.params.highlightOutlineWidth} onChange={(event) => onPatchEffectParams({ highlightOutlineWidth: Number(event.target.value) || 3 })} />
           </label>
           <label>
-            外发光强度
+            发光强度
             <input type="number" min="0" max="8" step="0.1" value={effectControl.params.highlightGlowStrength} onChange={(event) => onPatchEffectParams({ highlightGlowStrength: Number(event.target.value) || 1.8 })} />
           </label>
           <label>
@@ -304,13 +359,13 @@ const AIToolsPanel: React.FC<AIToolsPanelProps> = ({
           </label>
           <label className="checkbox-row compact">
             <input type="checkbox" checked={highlightShowLabel} onChange={(event) => onHighlightShowLabelChange(event.target.checked)} />
-            <span>显示球员标签</span>
+            <span>显示标签</span>
           </label>
           <div className="hint-line">
-            已选择 {highlightTargetBindings.length} 名球员。建议先运行一次“片段跟踪”，再从下方列表多选目标。
+            已选中 {highlightTargetBindings.length} 名球员，用于创建或更新多人高亮片段。
           </div>
           <div className="inline-actions">
-            <button onClick={() => onHighlightTargetsChange([])} disabled={!highlightTargetBindings.length}>清空多选</button>
+            <button onClick={() => onHighlightTargetsChange([])} disabled={!highlightTargetBindings.length}>清空高亮组</button>
           </div>
         </section>
       ) : null}
@@ -319,11 +374,11 @@ const AIToolsPanel: React.FC<AIToolsPanelProps> = ({
         <section className="panel-block">
           <div className="block-title">自动高光参数</div>
           <label>
-            单段时长（秒）
+            片段时长（秒）
             <input type="number" min="4" max="30" value={highlightDuration} onChange={(event) => onHighlightDurationChange(Number(event.target.value) || 10)} />
           </label>
           <label>
-            最多片段数
+            最多生成条数
             <input type="number" min="1" max="20" value={maxHighlights} onChange={(event) => onMaxHighlightsChange(Number(event.target.value) || 6)} />
           </label>
         </section>
@@ -332,7 +387,7 @@ const AIToolsPanel: React.FC<AIToolsPanelProps> = ({
       <section className="panel-block">
         <div className="block-title">目标列表</div>
         {!targets.length ? (
-          <div className="hint-line">先运行“片段跟踪”或“球员检测”，这里才会出现可选择的球员目标。</div>
+          <div className="hint-line">先运行目标检测或片段跟踪，生成稳定的球员目标后再绑定特效。</div>
         ) : (
           <div className="target-list">
             {targets.map((target) => {
@@ -346,7 +401,7 @@ const AIToolsPanel: React.FC<AIToolsPanelProps> = ({
                       {target.displayColor ? <span className="team-dot" style={{ backgroundColor: target.displayColor }} /> : null}
                       <strong>{target.label}</strong>
                     </div>
-                    <span>{target.trackId != null ? `#${target.trackId}` : '未分配 ID'}</span>
+                    <span>{target.trackId != null ? `#${target.trackId}` : '无轨迹 ID'}</span>
                   </div>
                   <div className="target-meta">
                     <span>{target.class === 'player' ? '球员' : '足球'}</span>
@@ -354,10 +409,10 @@ const AIToolsPanel: React.FC<AIToolsPanelProps> = ({
                     {target.teamLabel ? <span>{target.teamLabel}</span> : null}
                     {typeof target.appearances === 'number' ? <span>{target.appearances} 帧</span> : null}
                     {typeof target.trackSpan === 'number' ? <span>{target.trackSpan.toFixed(1)}s</span> : null}
-                    {typeof target.visibleRatio === 'number' ? <span>可见率 {(target.visibleRatio * 100).toFixed(0)}%</span> : null}
+                    {typeof target.visibleRatio === 'number' ? <span>可见 {(target.visibleRatio * 100).toFixed(0)}%</span> : null}
                   </div>
                   <div className="target-actions">
-                    <button onClick={() => onPreviewTarget(binding)}>预览</button>
+                    <button onClick={() => onPreviewTarget(binding)}>聚焦</button>
                     <button onClick={() => onApplyTarget('magnifier-effect', binding)}>用于放大镜</button>
                     <button onClick={() => onApplyTarget('player-pov', binding)}>用于 POV</button>
                     <button onClick={() => toggleHighlightTarget(binding)}>
@@ -374,7 +429,7 @@ const AIToolsPanel: React.FC<AIToolsPanelProps> = ({
       <section className={`summary-card ${summary?.success === false ? 'error' : 'success'}`}>
         <div className="summary-head">
           <strong>{summary?.title || '运行结果'}</strong>
-          <span>{summary?.success === false ? '失败' : '成功'}</span>
+          <span>{summary?.success === false ? '失败' : '已就绪'}</span>
         </div>
         {summary ? (
           <>
@@ -387,10 +442,10 @@ const AIToolsPanel: React.FC<AIToolsPanelProps> = ({
             {summary.message ? <div className="hint-line">{summary.message}</div> : null}
             {summary.modelResolved ? <div className="hint-line">实际模型：{summary.modelResolved}</div> : null}
             {summary.warnings.length ? <div className="warning-box">{summary.warnings.map((warning, index) => <div key={`${warning}_${index}`}>{warning}</div>)}</div> : null}
-            {result ? <details className="result-details"><summary>查看原始返回结果</summary><pre>{JSON.stringify(result, null, 2)}</pre></details> : null}
+            {result ? <details className="result-details"><summary>查看原始结果 JSON</summary><pre>{JSON.stringify(result, null, 2)}</pre></details> : null}
           </>
         ) : (
-          <div className="hint-line">运行一个 AI 工具后，这里会显示摘要、警告和返回结果。</div>
+          <div className="hint-line">选择一个工具并运行后，这里会展示模型、告警和结果摘要。</div>
         )}
       </section>
 
@@ -410,7 +465,7 @@ const AIToolsPanel: React.FC<AIToolsPanelProps> = ({
                     <span>{clip.start.toFixed(2)}s - {clip.end.toFixed(2)}s</span>
                   </div>
                   <button onClick={() => onAddHighlightClip(clip)} disabled={alreadyAdded}>
-                    {alreadyAdded ? '已加入时间线' : '加入时间线'}
+                    {alreadyAdded ? '已在时间线中' : '加入时间线'}
                   </button>
                 </div>
               );
